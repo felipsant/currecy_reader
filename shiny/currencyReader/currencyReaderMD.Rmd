@@ -1,0 +1,97 @@
+<!-- ln -s ~/Work/SantiagoCloud/R/CurrencyReader ~/R/x86_64-pc-linux-gnu-library/3.2/shiny/examples/ !-->
+
+---
+title: "Currency Reader"
+author: "Felipe Santiago"
+date: "July 22, 2016"
+output: html_document
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This R Markdown document was made to explain the R code of the CurrencyReader program that I made.
+This is acctually the second part of the program. The Data was already extrated with the Python Service throught Api calls to [CurrencyLayer](https://currencylayer.com/documentation).
+
+<!-- ## The Results -->
+<!-- <iframe src="website" style="border: none; width: 440px; height: 900px"></iframe> -->
+<!-- ```{r tabsets, echo=FALSE} -->
+<!-- shinyAppDir( -->
+<!--   system.file("examples/CurrencyReader", package = "shiny"), -->
+<!--   options = list( -->
+<!--     width = "100%", height = 550 -->
+<!--   ) -->
+<!-- ) -->
+<!-- ``` -->
+
+## The Code Behind
+**global.R**
+```{r, eval=FALSE}
+con <- dbConnect(RMySQL::MySQL(),dbname="?",host="?",port=?,user="?",password="?")
+
+currencyData <- dbGetQuery(con, "select cu.code, 
+                           cv.timestamp, 
+                           cv.value
+                           from currency cu 
+                           join currency_value cv on cv.currencyId = cu.id
+                           where cu.stopGetValue is NULL and cv.currencyId in(233,254,272,246,261,297)
+                           union 
+                           select 'USD',  
+                           cv.timestamp,
+                           1.0
+                           from currency_value cv where cv.currencyId = 233
+                           order by code")
+dbDisconnect(con)
+currencyCodes <- unique(currencyData$code)
+currencyData <- spread(currencyData, code, value)
+currencyData$timestamp <- as.Date(currencyData$timestamp)
+
+```
+
+**server.R**
+```{r, eval=FALSE}
+library(ggvis)
+library(dplyr)
+
+shinyServer(function(input, output, session) {
+  
+  mutatedCurrencyData <- reactive({ 
+    currencyData %>% filter(timestamp >= Sys.Date() - as.numeric(input$displayDays))
+  })
+  
+  yVal <- reactive({
+    mutatedCurrencyData()[,input$currencyTo] / mutatedCurrencyData()[,input$currencyFrom]
+   })
+  
+  mutatedCurrencyData %>% 
+        ggvis(~timestamp, y = yVal) %>% 
+        scale_datetime("x", nice = "day") %>%
+        layer_lines(stroke := "DarkGreen") %>%
+        add_axis("y", title = "Value To / Value From") %>%
+        add_axis("x", title = "Date") %>% 
+        bind_shiny("ggvis")
+  
+  output$table <- renderDataTable(currencyData)
+})
+
+
+```
+
+**ui.R**
+```{r, eval=FALSE}
+library(ggvis)
+
+fluidPage(fluidPage(
+  sidebarPanel(
+    selectInput("currencyFrom", "From:", currencyCodes, selected='USD'),
+    radioButtons("currencyTo", "To:", currencyCodes, selected='BRL'),
+    sliderInput("displayDays", "Display Last (n) Days:", min = 15, max = nrow(currencyData), value = 15)
+  ),
+  mainPanel(
+     ggvisOutput("ggvis")
+    ),
+  dataTableOutput('table')
+))
+```

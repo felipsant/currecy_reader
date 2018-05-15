@@ -1,0 +1,39 @@
+version: '2.2'
+
+services:
+  data:
+    build: data
+
+  mariadb:
+    build: data/mariadb
+    networks:
+      - back
+    ports: 
+      - "3306:3306"
+    volumes_from: 
+      - data        
+    volumes:
+      - /var/sc/mariadb/data/:/data 
+            
+  shiny:
+    build: shiny
+    networks:
+      - front
+      - back
+    ports:
+      - "3838:3838"
+    volumes_from: 
+      - data        
+    volumes:
+      - /var/sc/log/shiny-server:/var/log/shiny-server 
+
+  currency_service:
+    build: currencyReader/service
+    networks:
+      - back
+    depends_on:
+      - mariadb
+
+networks:
+  front:
+  back:
